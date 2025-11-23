@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign Up - SMS Messenger</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header>
+    <nav class="container">
+      <div class="logo">SMS Messenger 🚀</div>
+      <a href="login.html" class="btn btn-primary">Login</a>
+    </nav>
+  </header>
+
+  <div class="form-container">
+    <h2 style="text-align: center; color: #FF6B35; margin-bottom: 30px;">Create Account</h2>
+    <form id="signupForm">
+      <div class="form-group">
+        <label for="name">Individual/Company Name</label>
+        <input type="text" id="name" required>
+      </div>
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" required>
+      </div>
+      <div class="form-group">
+        <label for="phone">Phone Number (with country code)</label>
+        <input type="tel" id="phone" placeholder="+233..." required>
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" required minlength="8">
+      </div>
+      <div id="otpSection" style="display: none;">
+        <div class="form-group">
+          <label for="otp">Verification OTP</label>
+          <input type="text" id="otp" maxlength="6" required>
+          <button type="button" id="verifyOtp" class="btn btn-secondary" style="width: 100%; margin-top: 10px;">Verify & Complete Signup</button>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width: 100%;" id="signupBtn">Send Verification OTP</button>
+    </form>
+    <p style="text-align: center; margin-top: 20px; color: #666;">
+      Already have an account? <a href="login.html" style="color: #FF6B35;">Login</a>
+    </p>
+  </div>
+
+  <script>
+    const signupForm = document.getElementById('signupForm');
+    const otpSection = document.getElementById('otpSection');
+    const signupBtn = document.getElementById('signupBtn');
+    let tempUserData = {};
+
+    signupForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('name').value;
+      const email = document.getElementById('email').value;
+      const phone = document.getElementById('phone').value;
+      const password = document.getElementById('password').value;
+
+      try {
+        const res = await fetch('/api/signup/send-otp', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({name, email, phone, password})
+        });
+        const data = await res.json();
+        if (res.ok) {
+          tempUserData = {name, email, phone, password};
+          otpSection.style.display = 'block';
+          signupBtn.style.display = 'none';
+          alert('OTP sent to your phone/email!');
+        } else {
+          alert(data.error);
+        }
+      } catch (err) {
+        alert('Signup initiation failed');
+      }
+    });
+
+    document.getElementById('verifyOtp').addEventListener('click', async () => {
+      const otp = document.getElementById('otp').value;
+      try {
+        const res = await fetch('/api/signup/verify-otp', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({...tempUserData, otp})
+        });
+        const data = await res.json();
+        if (res.ok) {
+          localStorage.setItem('token', data.token);
+          window.location.href = 'dashboard.html';
+        } else {
+          alert(data.error);
+        }
+      } catch (err) {
+        alert('Verification failed');
+      }
+    });
+  </script>
+</body>
+</html>

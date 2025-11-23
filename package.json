@@ -1,0 +1,17 @@
+{
+  "name": "sms-messaging-app",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "@vercel/postgres": "^0.7.3",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "africastalking": "^1.0.6",
+    "paystack": "^2.0.1",
+    "node-cron": "^3.0.3",
+    "uuid": "^10.0.0"
+  }
+}

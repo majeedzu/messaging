@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - SMS Messenger</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header>
+    <nav class="container">
+      <div class="logo">SMS Messenger 🚀</div>
+      <a href="signup.html" class="btn btn-secondary">Sign Up</a>
+    </nav>
+  </header>
+
+  <div class="form-container">
+    <h2 style="text-align: center; color: #FF6B35; margin-bottom: 30px;">Welcome Back</h2>
+    <form id="loginForm">
+      <div class="form-group">
+        <label for="emailOrPhone">Email or Phone</label>
+        <input type="text" id="emailOrPhone" required>
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" required>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width: 100%;">Login</button>
+    </form>
+    <p style="text-align: center; margin-top: 20px; color: #666;">
+      <a href="signup.html" style="color: #FF6B35;">Don't have an account? Sign Up</a>
+    </p>
+  </div>
+
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const emailOrPhone = document.getElementById('emailOrPhone').value;
+      const password = document.getElementById('password').value;
+
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({emailOrPhone, password})
+        });
+        const data = await res.json();
+        if (res.ok) {
+          localStorage.setItem('token', data.token);
+          window.location.href = 'dashboard.html';
+        } else {
+          alert(data.error);
+        }
+      } catch (err) {
+        alert('Login failed');
+      }
+    });
+  </script>
+</body>
+</html>

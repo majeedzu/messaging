@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plans - SMS Messenger</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header>
+    <nav class="container">
+      <div class="logo">SMS Messenger 🚀</div>
+      <div>
+        <a href="dashboard.html" class="btn btn-primary">Dashboard</a>
+      </div>
+    </nav>
+  </header>
+
+  <div class="container" style="padding: 60px 20px;">
+    <h1 style="text-align: center; color: white; margin-bottom: 50px;">Choose Your Plan</h1>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; max-width: 1200px; margin: 0 auto;">
+
+      <div class="plan-card">
+        <h3 style="color: #FF6B35;">🆓 Free Trial</h3>
+        <p style="font-size: 3rem; font-weight: bold; color: #00D4FF; margin: 20px 0;">14 Days</p>
+        <ul style="list-style: none; padding: 0; margin: 20px 0;">
+          <li>✓ 10 contacts per batch</li>
+          <li>✓ 3 batches per day</li>
+          <li>✓ Full features</li>
+        </ul>
+        <button class="btn btn-primary" style="width: 100%; margin-top: 20px;" onclick="alert('Trial activates on signup!')">Start Trial</button>
+      </div>
+
+      <div class="plan-card">
+        <h3 style="color: #FF6B35;">📈 Medium</h3>
+        <p style="font-size: 2.5rem; font-weight: bold; color: #00D4FF;">GHS 10/mo or $2/mo<br><small>Yearly (10% off): GHS 108 or $22</small></p>
+        <ul style="list-style: none; padding: 0; margin: 20px 0;">
+          <li>✓ 100 contacts per batch</li>
+          <li>✓ 10 batches per day</li>
+        </ul>
+        <button id="mediumBtn" class="btn btn-primary" style="width: 100%; margin-top: 20px;">Subscribe</button>
+      </div>
+
+      <div class="plan-card">
+        <h3 style="color: #FF6B35;">⭐ Premium</h3>
+        <p style="font-size: 2.5rem; font-weight: bold; color: #00D4FF;">GHS 20/mo or $4/mo<br><small>Yearly (10% off): GHS 216 or $43</small></p>
+        <ul style="list-style: none; padding: 0; margin: 20px 0;">
+          <li>✓ Unlimited contacts & batches</li>
+          <li>✓ Priority support</li>
+        </ul>
+        <button id="premiumBtn" class="btn btn-primary" style="width: 100%; margin-top: 20px;">Subscribe</button>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="https://js.paystack.co/v1/inline.js"></script>
+  <script>
+    const token = localStorage.getItem('token');
+    const publicKey = 'pk_test_your_paystack_public_key'; // Replace with env or CDN
+
+    async function initPayment(plan, cycle) {
+      if (!token) {
+        alert('Please login first');
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/subscribe/init?plan=${plan}&cycle=${cycle}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        const handler = (response) => {
+          window.location.href = `/api/subscribe/verify?reference=${response.reference}`;
+        };
+
+        const onClose = () => {
+          console.log('Payment cancelled');
+        };
+
+        PaystackPop.setup({
+          key: publicKey,
+          email: data.email,
+          amount: data.amount * 100, // kobo/cents
+          currency: data.currency,
+          ref: data.reference,
+          metadata: { plan, cycle, userToken: token },
+          callback: handler,
+          onClose: onClose
+        }).openIframe();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    // Medium Monthly/Yearly
+    document.querySelector('[id="mediumBtn"]').onclick = () => initPayment('medium', 'monthly');
+    const mediumYearlyBtn = document.createElement('button');
+    mediumYearlyBtn.id = 'mediumYearlyBtn';
+    mediumYearlyBtn.className = 'btn btn-primary';
+    mediumYearlyBtn.style.width = '100%';
+    mediumYearlyBtn.style.marginTop = '10px';
+    mediumYearlyBtn.textContent = 'Subscribe Yearly (10% off)';
+    mediumYearlyBtn.onclick = () => initPayment('medium', 'yearly');
+    document.querySelector('.plan-card:nth-child(2) button').parentNode.appendChild(mediumYearlyBtn);
+
+    // Premium Monthly/Yearly
+    document.querySelector('[id="premiumBtn"]').onclick = () => initPayment('premium', 'monthly');
+    const premiumYearlyBtn = document.createElement('button');
+    premiumYearlyBtn.id = 'premiumYearlyBtn';
+    premiumYearlyBtn.className = 'btn btn-primary';
+    premiumYearlyBtn.style.width = '100%';
+    premiumYearlyBtn.style.marginTop = '10px';
+    premiumYearlyBtn.textContent = 'Subscribe Yearly (10% off)';
+    premiumYearlyBtn.onclick = () => initPayment('premium', 'yearly');
+    document.querySelector('.plan-card:nth-child(3) button').parentNode.appendChild(premiumYearlyBtn);
+
+    if (!token) {
+      document.querySelectorAll('button[id$="Btn"]').forEach(btn => {
+        btn.onclick = () => window.location.href = 'signup.html';
+      });
+    }
+  </script>
+</body>
+</html>

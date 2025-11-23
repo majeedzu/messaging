@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Profile - SMS Messenger</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header>
+    <nav class="container">
+      <div class="logo">SMS Messenger 🚀</div>
+      <div>
+        <a href="dashboard.html" class="btn btn-secondary mr-2">Dashboard</a>
+        <a href="plans.html" class="btn btn-primary mr-2">Plans</a>
+        <button id="logoutBtn" class="btn btn-outline">Logout</button>
+      </div>
+    </nav>
+  </header>
+
+  <div class="container">
+    <div class="form-container" style="max-width: 600px;">
+      <h2>👤 Profile & Subscriptions</h2>
+      <div id="profileInfo"></div>
+      <h3 style="margin-top: 30px; color: #FF6B35;">Active Subscription</h3>
+      <div id="subscriptionInfo"></div>
+      <div style="margin-top: 20px;">
+        <button id="cancelSub" class="btn btn-outline" style="width: 100%;">Cancel Subscription</button>
+      </div>
+      <h3 style="margin-top: 30px;">Message History</h3>
+      <div id="historyList" style="max-height: 300px; overflow-y: auto;"></div>
+    </div>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('token');
+    if (!token) window.location.href = 'login.html';
+
+    async function loadProfile() {
+      try {
+        const res = await fetch('/api/profile', { headers: { Authorization: `Bearer ${token}` } });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        document.getElementById('profileInfo').innerHTML = `
+          <p><strong>Name:</strong> ${data.name}</p>
+          <p><strong>Email:</strong> ${data.email}</p>
+          <p><strong>Phone:</strong> ${data.phone}</p>
+          <p><strong>Plan:</strong> ${data.plan_tier.toUpperCase()} ${data.trial_end ? `(Trial ends ${new Date(data.trial_end).toLocaleDateString()})` : ''}</p>
+        `;
+        document.getElementById('subscriptionInfo').innerHTML = data.subscription ? `
+          <p><strong>Plan:</strong> ${data.subscription.plan_type} (${data.subscription.billing_cycle})</p>
+          <p><strong>Renews:</strong> ${new Date(data.subscription.renewal_date).toLocaleDateString()}</p>
+          <p><strong>Amount:</strong> ${data.subscription.amount} ${data.subscription.currency}</p>
+        ` : '<p>No active subscription</p>';
+        const historyRes = await fetch('/api/history', { headers: { Authorization: `Bearer ${token}` } });
+        const history = await historyRes.json();
+        document.getElementById('historyList').innerHTML = history.map(m => `
+          <div style="padding: 15px; border-bottom: 1px solid #eee; background: #f8f9fa; margin-bottom: 10px; border-radius: 8px;">
+            <p><strong>${m.subject || 'No subject'}</strong></p>
+            <p>${m.body.substring(0, 50)}...</p>
+            <p>Sent to ${JSON.parse(m.recipients).length} contacts on ${new Date(m.sent_at).toLocaleString()}</p>
+            <p>Status: ${m.status}</p>
+            <div style="margin-top: 10px; display: flex; gap: 10px;">
+              <button onclick="editMessage('${JSON.stringify(m).replace(/'/g, '&apos;')}')" class="btn btn-secondary" style="padding: 5px 10px; font-size: 0.8rem;">Edit</button>
+              <button onclick="resendMessage('${JSON.stringify({recipients: JSON.parse(m.recipients), subject: m.subject, body: m.body}).replace(/'/g, '&apos;')}')" class="btn btn-primary" style="padding: 5px 10px; font-size: 0.8rem;">Resend</button>
+              <button onclick="deleteMessage('${m.id}')" class="btn btn-outline" style="padding: 5px 10px; font-size: 0.8rem; color: #dc3545; border-color: #dc3545;">Delete</button>
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        alert('Load failed: ' + err.message);
+      }
+    }
+
+    document.getElementById('cancelSub').onclick = async () => {
+      if (confirm('Cancel subscription?')) {
+        const res = await fetch('/api/subscribe/cancel', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok) location.reload();
+        else alert('Cancel failed');
+      }
+    };
+
+    document.getElementById('logoutBtn').onclick = () => {
+      localStorage.removeItem('token');
+      window.location.href = 'index.html';
+    };
+
+    loadProfile();
+  </script>
+
+  <script>
+    window.editMessage = (msgData) => {
+      localStorage.setItem('editMessage', msgData);
+      window.location.href = 'dashboard.html';
+    };
+
+    window.resendMessage = async (msgData) => {
+      if (confirm('Resend this message?')) {
+        try {
+          const res = await fetch('/api/send-sms', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify(msgData)
+          });
+          if (res.ok) {
+            alert('Resent successfully!');
+            loadProfile();
+          } else {
+            const data = await res.json();
+            alert('Resend failed: ' + data.error);
+          }
+        } catch (err) {
+          alert('Error: ' + err.message);
+        }
+      }
+    };
+
+    window.deleteMessage = async (id) => {
+      if (confirm('Delete this message?')) {
+        try {
+          const res = await fetch('/api/messages/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ id })
+          });
+          if (res.ok) {
+            alert('Deleted!');
+            loadProfile();
+          } else {
+            alert('Delete failed');
+          }
+        } catch (err) {
+          alert('Error: ' + err.message);
+        }
+      }
+    };
+  </script>
+</body>
+</html>

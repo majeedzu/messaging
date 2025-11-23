@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - SMS Messenger</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header>
+    <nav class="container">
+      <div class="logo">SMS Messenger 🚀</div>
+      <div>
+        <a href="plans.html" class="btn btn-secondary mr-2">Upgrade Plan</a>
+        <button id="logoutBtn" class="btn btn-outline">Logout</button>
+      </div>
+    </nav>
+  </header>
+
+  <div class="container">
+    <div class="dashboard">
+      <div class="contacts-panel">
+        <h3>📱 Select Contacts <button id="addContacts" class="btn btn-primary" style="float: right; padding: 8px 16px; font-size: 0.9rem;">+</button></h3>
+        <div id="contactsList" style="margin-top: 20px; max-height: 400px; overflow-y: auto;">
+          No contacts selected yet.
+        </div>
+        <div id="planInfo" style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 10px; font-size: 0.9rem;">
+          Loading plan...
+        </div>
+      </div>
+      <div class="message-panel">
+        <h3>✉️ Compose Message</h3>
+        <div class="form-group">
+          <label for="subject">Subject</label>
+          <input type="text" id="subject" placeholder="Optional subject line">
+        </div>
+        <div class="form-group">
+          <label for="message">Message</label>
+          <textarea id="message" rows="6" placeholder="Enter your message (max 160 chars for SMS)" maxlength="160"></textarea>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button id="sendBtn" class="btn btn-primary" style="flex: 1;">Send SMS</button>
+          <button id="clearBtn" class="btn btn-outline" style="flex: 0.5;">Clear</button>
+        </div>
+        <div id="sendStatus"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('token');
+    if (!token) {
+      window.location.href = 'login.html';
+    }
+
+    let contacts = [];
+    let userPlan = {};
+
+    // Load user plan
+    async function loadUserData() {
+      try {
+        const res = await fetch('/api/user/plan', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (res.ok) {
+          userPlan = data;
+          document.getElementById('planInfo').innerHTML = `
+            Plan: ${data.plan_tier.toUpperCase()} | Batch limit: ${data.limits.batch_size} contacts | Daily batches: ${data.limits.daily_batches}
+          `;
+        } else {
+          alert(data.error);
+          localStorage.removeItem('token');
+          window.location.href = 'login.html';
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    // Contact picker
+    document.getElementById('addContacts').addEventListener('click', async () => {
+      if ('contacts' in navigator && 'ContactsManager' in window) {
+        try {
+          const props = ['name', 'tel'];
+          const opts = { multiple: true };
+          const selected = await navigator.contacts.select(props, opts);
+          contacts = selected.map(c => ({ name: c.name[0], phone: c.tel[0].value }));
+          updateContactsList();
+        } catch (err) {
+          console.log('Contact picker not supported, use manual input');
+          promptManualInput();
+        }
+      } else {
+        promptManualInput();
+      }
+    });
+
+    function promptManualInput() {
+      const input = prompt('Enter phone numbers (comma-separated, e.g., +233241234567,+233301234567)');
+      if (input) {
+        contacts = input.split(',').map(p => ({ name: 'Manual', phone: p.trim() }));
+        updateContactsList();
+      }
+    }
+
+    function updateContactsList() {
+      const list = document.getElementById('contactsList');
+      if (contacts.length === 0) {
+        list.innerHTML = 'No contacts selected yet.';
+        return;
+      }
+      list.innerHTML = contacts.map((c, index) => `
+        <div style="padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
+          <span>${c.name || 'Unknown'} - ${c.phone}</span>
+          <button onclick="removeContact(${index})" style="background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;">×</button>
+        </div>
+      `).join('');
+    }
+
+    window.removeContact = (index) => {
+      contacts.splice(index, 1);
+      updateContactsList();
+    };
+
+    // Preview & Send
+    document.getElementById('sendBtn').addEventListener('click', () => {
+      if (contacts.length === 0) return alert('Select contacts first');
+      if (!userPlan.limits) return alert('Plan not loaded');
+      if (contacts.length > userPlan.limits.batch_size) return alert(`Batch size exceeds plan limit (${userPlan.limits.batch_size})`);
+
+      const subject = document.getElementById('subject').value;
+      const message = document.getElementById('message').value;
+      if (!message.trim()) return alert('Enter a message');
+
+      if (confirm(`Preview:\n\nTo: ${contacts.length} contacts\nSubject: ${subject || 'None'}\nMessage: ${message}\n\nSend now?`)) {
+        sendMessage(contacts.map(c => c.phone), subject, message);
+      }
+    });
+
+    async function sendMessage(phones, subject, message) {
+      try {
+        const res = await fetch('/api/send-sms', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ contacts: phones, subject, message })
+        });
+        const data = await res.json();
+        document.getElementById('sendStatus').innerHTML = res.ok
+          ? `<p style="color: green;">Sent successfully to ${data.sentCount || phones.length} contacts!</p>`
+          : `<p style="color: red;">Error: ${data.error}</p>`;
+      } catch (err) {
+        document.getElementById('sendStatus').innerHTML = '<p style="color: red;">Send failed</p>';
+      }
+    };
+
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      contacts = [];
+      updateContactsList();
+      document.getElementById('subject').value = '';
+      document.getElementById('message').value = '';
+    });
+
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      localStorage.removeItem('token');
+      window.location.href = 'index.html';
+    });
+
+    // Check for edit message from profile
+    const editMsg = localStorage.getItem('editMessage');
+    if (editMsg) {
+      const msg = JSON.parse(editMsg);
+      contacts = msg.recipients.map(phone => ({ name: 'From History', phone }));
+      document.getElementById('subject').value = msg.subject || '';
+      document.getElementById('message').value = msg.body;
+      updateContactsList();
+      localStorage.removeItem('editMessage');
+      alert('Loaded message from history for editing.');
+    }
+
+    // Init
+    loadUserData();
+  </script>
+</body>
+</html>
