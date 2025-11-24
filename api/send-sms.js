@@ -1,96 +1,59 @@
-import { sql } from '@vercel/postgres';
-import { requireAuth, getPlanLimits } from '../utils.js';
-import nodemailer from 'nodemailer';
+import { sql, requireAuth, getPlanLimits } from '@/utils';
+import africastalking from 'africastalking';
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+const AT = africastalking({
+  apiKey: process.env.AT_API_KEY,
+  username: process.env.AT_USERNAME
+});
+const sms = AT.SMS;
 
+export async function POST(req) {
   try {
     const user = await requireAuth(req);
-    const { contacts, subject, message } = req.body;
+    const { contacts, subject, message } = await req.json();
 
     if (!contacts || contacts.length === 0 || !message) {
-      return res.status(400).json({ error: 'Missing contacts or message' });
+      return Response.json({ error: 'Missing contacts or message' }, { status: 400 });
     }
 
-    // Check plan limits
     const limits = getPlanLimits(user.plan_tier);
     if (contacts.length > limits.batch_size) {
-      return res
-        .status(400)
-        .json({ error: `Batch size exceeds limit (${limits.batch_size})` });
+      return Response.json({ error: `Batch size exceeds limit (${limits.batch_size})` }, { status: 400 });
     }
 
-    // Daily usage
     const today = new Date().toISOString().split('T')[0];
 
     const { rows: usage } = await sql`
-      SELECT * FROM daily_usage
-      WHERE user_id = ${user.id} AND date = ${today}
+      SELECT * FROM daily_usage WHERE user_id = ${user.id} AND date = ${today}
     `;
-
     const currentBatches = usage[0]?.sent_batches || 0;
 
     if (currentBatches >= limits.daily_batches) {
-      return res.status(400).json({ error: 'Daily batch limit reached' });
+      return Response.json({ error: 'Daily limit reached' }, { status: 400 });
     }
 
-    // Create email transporter
-    const transporter = nodemailer.createTransport({
-      host: process.env.EMAIL_HOST,
-      port: Number(process.env.EMAIL_PORT),
-      secure: Number(process.env.EMAIL_PORT) === 465,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-      }
+    const result = await sms.send({
+      to: contacts.join(','),
+      message: `${subject ? `[${subject}] ` : ''}${message}`,
+      from: 'SMSMessenger'
     });
 
-    // Send emails one by one (safer)
-    const results = [];
-
-    for (const email of contacts) {
-      const emailResult = await transporter.sendMail({
-        from: `"SMS Messenger" <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject: subject || 'New Message',
-        text: message
-      });
-
-      results.push({ email, status: 'sent', id: emailResult.messageId });
-    }
-
-    // Log messages
     await sql`
       INSERT INTO messages (user_id, subject, body, recipients, status)
-      VALUES (
-        ${user.id},
-        ${subject},
-        ${message},
-        ${JSON.stringify(contacts)},
-        'sent'
-      )
+      VALUES (${user.id}, ${subject}, ${message}, ${JSON.stringify(contacts)}, 'sent')
     `;
 
-    // Update daily usage
     await sql`
-      INSERT INTO daily_usage (user_id, date, sent_batches, contacts_sent, max_batches)
-      VALUES (${user.id}, ${today}, 1, ${contacts.length}, ${limits.daily_batches})
-      ON CONFLICT (user_id, date)
-      DO UPDATE SET
+      INSERT INTO daily_usage (user_id, date, sent_batches, contacts_sent)
+      VALUES (${user.id}, ${today}, 1, ${contacts.length})
+      ON CONFLICT (user_id, date) DO UPDATE SET
         sent_batches = daily_usage.sent_batches + 1,
         contacts_sent = daily_usage.contacts_sent + ${contacts.length}
     `;
 
-    return res.json({
-      success: true,
-      sentCount: contacts.length,
-      results
-    });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: 'Send failed', details: error.message });
+    return Response.json({ success: true, sentCount: contacts.length, result });
+  } catch (err) {
+    console.error(err);
+    return Response.json({ error: 'Send failed', details: err.message }, { status: 500 });
   }
 }

@@ -52,18 +52,22 @@ CREATE TABLE IF NOT EXISTS messages (
   status TEXT DEFAULT 'sent' -- sent, failed, queued
 );
 
--- Temp OTPs table for verification (expires in 10 min)
-CREATE TABLE IF NOT EXISTS temp_otps (
+-- Verification tokens table
+CREATE TABLE IF NOT EXISTS verification_tokens (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  phone TEXT NOT NULL,
-  email TEXT,
-  otp_hash TEXT NOT NULL,
+  email TEXT NOT NULL,
+  token TEXT UNIQUE NOT NULL,
   expires_at TIMESTAMP NOT NULL,
   created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_temp_otps_phone ON temp_otps(phone);
-CREATE INDEX idx_temp_otps_expires ON temp_otps(expires_at);
+CREATE INDEX idx_verification_tokens_email ON verification_tokens(email);
+CREATE INDEX idx_verification_tokens_expires ON verification_tokens(expires_at);
+
+-- Add is_verified to users
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT false;
+
+-- Indexes
 
 -- Indexes for performance
 CREATE INDEX idx_users_phone ON users(phone);
