@@ -1,49 +1,50 @@
-import { NextResponse } from 'next/server';
-import { hashPassword, verifyOTP, generateToken, sql } from '../utils.js';
+import { verifyOTP, hashPassword, generateToken, supabase, detectCountry } from '@/utils/utils';
 
-export async function POST(request) {
+export async function POST(req) {
   try {
-    const { name, email, phone, password, otp } = await request.json();
+    const { name, email, phone, password, otp } = await req.json();
 
-    // Verify OTP
-    const validOTP = await verifyOTP(phone, otp, email);
+    const validOTP = await verifyOTP(email, otp, phone);
     if (!validOTP) {
-      return NextResponse.json({ error: 'Invalid or expired OTP' }, { status: 400 });
+      return Response.json({ error: 'Invalid OTP' }, { status: 400 });
     }
 
-    // Check if already exists (double-check)
-    const { rows: existing } = await sql`
-      SELECT id FROM users WHERE email = ${email} OR phone = ${phone}
-    `;
+    const { data: existing } = await supabase
+      .from('users')
+      .select('id')
+      .or(`email.eq.${email},phone.eq.${phone}`);
+
     if (existing.length > 0) {
-      return NextResponse.json({ error: 'User already exists' }, { status: 409 });
+      return Response.json({ error: 'User already exists' }, { status: 409 });
     }
 
-    // Hash password
     const passwordHash = await hashPassword(password);
 
-    // Detect country
-    const { country_code } = detectCountry(phone); // Assume utils exports it
+    const { code: country_code } = detectCountry(phone);
 
-    // Create user with 14-day trial
     const trialEnd = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
-    const { rows } = await sql`
-      INSERT INTO users (name, email, phone, country_code, password_hash, trial_end, plan_tier)
-      VALUES (${name}, ${email}, ${phone}, ${country_code}, ${passwordHash}, ${trialEnd}, 'trial')
-      RETURNING id
-    `;
 
-    const userId = rows[0].id;
+    const { data, error } = await supabase
+      .from('users')
+      .insert({
+        name,
+        email,
+        phone,
+        country_code,
+        password_hash: passwordHash,
+        trial_end: trialEnd.toISOString(),
+        plan_tier: 'trial'
+      })
+      .select('id')
+      .single();
 
-    // Cleanup OTP
-    await sql`DELETE FROM temp_otps WHERE phone = ${phone} OR email = ${email}`;
+    if (error) throw error;
 
-    // Generate token
-    const token = generateToken({ userId });
+    const token = generateToken({ userId: data.id });
 
-    return NextResponse.json({ token, userId });
-  } catch (error) {
-    console.error(error);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+    return Response.json({ userId: data.id, token });
+  } catch (err) {
+    console.error(err);
+    return Response.json({ error: 'Server error' }, { status: 500 });
   }
 }
