@@ -9,9 +9,10 @@
     "@supabase/supabase-js": "^2.45.4",
     "bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.2",
-    "paystack": "^2.0.1",
     "node-cron": "^3.0.3",
-    "uuid": "^10.0.0",
-    "resend": "^3.2.0"
+    "nodemailer": "^7.0.10",
+    "paystack": "^2.0.1",
+    "resend": "^3.2.0",
+    "uuid": "^10.0.0"
   }
 }
