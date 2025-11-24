@@ -1,18 +1,17 @@
-import { sql } from '@vercel/postgres';
+import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
-import AfricasTalking from 'africastalking';
+import Resend from 'resend';
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY;
+export const supabase = createClient(supabaseUrl, supabaseKey);
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-prod';
 const BCRYPT_ROUNDS = 12;
-
-// Initialize Africa's Talking (signup OTPs)
-const AT = AfricasTalking({
-  apiKey: process.env.AT_API_KEY,
-  username: process.env.AT_USERNAME
-});
-const sms = AT.SMS;
 
 // Helper: Hash password
 export async function hashPassword(password) {
@@ -42,8 +41,13 @@ export function verifyToken(token) {
 export async function getUserFromToken(token) {
   const decoded = verifyToken(token);
   if (!decoded?.userId) return null;
-  const { rows } = await sql`SELECT * FROM users WHERE id = ${decoded.userId}`;
-  return rows[0] || null;
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', decoded.userId)
+    .single();
+  if (error) return null;
+  return data;
 }
 
 // Helper: Detect country from phone (simple prefix)
@@ -53,7 +57,6 @@ export function detectCountry(phone) {
     '+1': { code: 'US', currency: 'USD' },
     '+234': { code: 'NG', currency: 'NGN' },
     '+254': { code: 'KE', currency: 'KES' }
-    // Add more as needed
   };
   for (const [prefix, info] of Object.entries(prefixes)) {
     if (phone.startsWith(prefix)) return info;
@@ -71,50 +74,55 @@ export function getPlanLimits(plan_tier) {
   return limits[plan_tier] || limits.trial;
 }
 
-// Helper: Generate and send OTP
-export async function sendOTP(phone, email = null) {
+// Helper: Generate and send OTP via EMAIL
+export async function sendOTP(email, phone = null) {
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
   const otpHash = await hashPassword(otp);
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 min
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
   // Store hashed OTP
-  await sql`
-    INSERT INTO temp_otps (phone, email, otp_hash, expires_at)
-    VALUES (${phone}, ${email}, ${otpHash}, ${expiresAt})
-    ON CONFLICT (phone) DO UPDATE SET
-      otp_hash = ${otpHash},
-      expires_at = ${expiresAt}
-  `;
+  const { error } = await supabase
+    .from('temp_otps')
+    .upsert({ email, phone, otp_hash: otpHash, expires_at: expiresAt }, { onConflict: 'email' });
 
-  // Send via SMS (priority)
+  if (error) throw new Error('Failed to store OTP');
+
+  // Send via email
   try {
-    await sms.send({
-      to: phone,
-      message: `SMS Messenger OTP: ${otp}. Valid for 10 minutes. Do not share.`
+    await resend.emails.send({
+      from: 'SMS Messenger <noreply@yourdomain.com>',
+      to: [email],
+      subject: 'Your SMS Messenger Verification Code',
+      html: `<p>Your verification code is <strong>${otp}</strong>. It expires in 10 minutes.</p>`
     });
-  } catch (smsErr) {
-    console.error('SMS failed:', smsErr);
-    // Fallback: email (implement email service later, e.g., Resend)
-    // For now, log
+  } catch (emailErr) {
+    console.error('Email failed:', emailErr);
+    throw new Error('Failed to send verification email');
   }
 
   return true;
 }
 
 // Helper: Verify OTP
-export async function verifyOTP(phone, otp, email = null) {
-  const { rows } = await sql`
-    SELECT * FROM temp_otps
-    WHERE (phone = ${phone} OR email = ${email})
-    AND expires_at > NOW()
-    ORDER BY created_at DESC LIMIT 1
-  `;
-  if (!rows[0]) return false;
+export async function verifyOTP(email, otp, phone = null) {
+  const { data: rows } = await supabase
+    .from('temp_otps')
+    .select('*')
+    .or(`email.eq.${email}${phone ? `,phone.eq.${phone}` : ''}`)
+    .gte('expires_at', new Date().toISOString())
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (!rows || rows.length === 0) return false;
 
   return await verifyPassword(otp, rows[0].otp_hash);
 }
 
-// Helper: Cleanup expired OTPs (call periodically)
+// Helper: Cleanup expired OTPs
 export async function cleanupExpiredOTPs() {
-  await sql`DELETE FROM temp_otps WHERE expires_at < NOW()`;
+  const { error } = await supabase
+    .from('temp_otps')
+    .delete()
+    .lt('expires_at', new Date().toISOString());
+  if (error) console.error('Cleanup failed:', error);
 }
