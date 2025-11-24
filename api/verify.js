@@ -4,43 +4,45 @@ import { generateToken } from '../utils.js';
 module.exports = async (req, res) => {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { token, email } = req.query;
+  const { searchParams } = new URL(req.url, `http://${req.headers.host}`);
+  const token = searchParams.get('token');
+  const email = searchParams.get('email');
 
   if (!token || !email) {
-    return res.redirect('/signup.html?error=no_token');
+    return res.redirect('/signup.html?error=missing_params');
   }
 
   try {
-    // Check token
+    // Check verification token
     const { data: tokenData } = await supabase
-      .from('verification_tokens')
+      .from('temp_otps')
       .select('*')
-      .eq('token', token)
+      .eq('otp_hash', token)
       .eq('email', email)
       .gte('expires_at', new Date().toISOString())
       .single();
 
     if (!tokenData) {
-      return res.redirect('/signup.html?error=invalid_token');
+      return res.redirect('/signup.html?error=invalid_or_expired_token');
     }
 
-    // Verify user
+    // Mark user as verified
     const { error } = await supabase
       .from('users')
       .update({ is_verified: true })
       .eq('email', email);
 
     if (error) {
-      return res.redirect('/signup.html?error=verify_failed');
+      return res.redirect('/signup.html?error=verification_failed');
     }
 
-    // Delete token
+    // Cleanup token
     await supabase
-      .from('verification_tokens')
+      .from('temp_otps')
       .delete()
-      .eq('token', token);
+      .eq('otp_hash', token);
 
-    // Generate login token
+    // Get user and generate JWT
     const { data: user } = await supabase
       .from('users')
       .select('*')

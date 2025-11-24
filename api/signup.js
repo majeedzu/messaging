@@ -1,5 +1,6 @@
 import { supabase } from '../utils.js';
-import { hashPassword } from '../utils.js';
+import { hashPassword, detectCountry } from '../utils.js';
+import { v4 as uuidv4 } from 'uuid';
 import Resend from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -36,6 +37,7 @@ module.exports = async (req, res) => {
       const country_code = countryInfo.code;
 
       // Create unverified user
+      const trialEnd = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
       const { data: user, error: userError } = await supabase
         .from('users')
         .insert({
@@ -44,7 +46,7 @@ module.exports = async (req, res) => {
           phone: phone || null,
           country_code,
           password_hash: passwordHash,
-          trial_end: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+          trial_end: trialEnd,
           plan_tier: 'trial',
           is_verified: false
         })
@@ -56,30 +58,39 @@ module.exports = async (req, res) => {
       }
 
       // Generate verification token
-      const token = uuidv4();
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24h
+      const verificationToken = uuidv4();
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
 
-      await supabase
-        .from('verification_tokens')
-        .insert({ email, token, expires_at: expiresAt });
+      const { error: tokenError } = await supabase
+        .from('temp_otps')
+        .upsert({
+          email,
+          phone,
+          otp_hash: verificationToken, // Reuse temp_otps for verification token
+          expires_at: expiresAt
+        });
+
+      if (tokenError) {
+        return res.status(500).json({ error: 'Failed to generate verification token' });
+      }
 
       // Send verification email
-      const verifyUrl = `${req.headers.host}/verify.html?token=${token}&email=${encodeURIComponent(email)}`;
+      const verifyUrl = `https://${req.headers.host}/verify.html?token=${verificationToken}&email=${encodeURIComponent(email)}`;
 
       await resend.emails.send({
         from: 'SMS Messenger <noreply@yourdomain.com>',
         to: [email],
         subject: 'Verify your SMS Messenger account',
         html: `
-          <h2>Verify your email</h2>
-          <p>Click the link below to verify your account:</p>
-          <a href="https://${verifyUrl}" style="background: #FF6B35; color: white; padding: 12px 24px; text-decoration: none; border-radius: 25px;">Verify Email</a>
-          <p>Or copy this link: https://${verifyUrl}</p>
+          <h2>Verify your email address</h2>
+          <p>Thanks for signing up! Please click the button below to verify your email:</p>
+          <a href="${verifyUrl}" style="background: #FF6B35; color: white; padding: 15px 30px; text-decoration: none; border-radius: 25px; font-weight: bold;">Verify Email</a>
+          <p style="margin-top: 20px;">Or copy and paste this link: <br><code>${verifyUrl}</code></p>
           <p>This link expires in 24 hours.</p>
         `
       });
 
-      res.json({ success: true, message: 'Verification email sent! Check your inbox.' });
+      res.json({ success: true, message: 'Verification email sent! Check your Gmail inbox.' });
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Server error' });
