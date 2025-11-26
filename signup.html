@@ -88,7 +88,27 @@
           body: JSON.stringify({name, email, password})
         });
 
-        const data = await res.json();
+        // Check if response is JSON
+        const contentType = res.headers.get('content-type');
+        let data;
+        
+        if (contentType && contentType.includes('application/json')) {
+          data = await res.json();
+        } else {
+          // Response is not JSON (likely HTML error page)
+          const text = await res.text();
+          console.error('Non-JSON response received:');
+          console.error('Status:', res.status, res.statusText);
+          console.error('Content-Type:', contentType);
+          console.error('Response preview:', text.substring(0, 500));
+          
+          if (res.status === 404) {
+            alert('Error: API endpoint not found (404). The route /api/signup/send-otp may not be deployed. Please check:\n1. Are you running "vercel dev" locally?\n2. Has the project been deployed to Vercel?\n3. Check the console for more details.');
+          } else {
+            alert('Server error: The API endpoint returned an error page (Status: ' + res.status + '). Check console for details.');
+          }
+          return;
+        }
 
         if (res.ok) {
           tempUserData = {name, email, password};
