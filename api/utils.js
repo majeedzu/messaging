@@ -98,15 +98,41 @@ export async function sendOTP(email, phone = null) {
   // Send via email
   try {
     const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
-    await resend.emails.send({
+    console.log('Attempting to send email:', { from: fromEmail, to: email, hasApiKey: !!process.env.RESEND_API_KEY });
+    
+    const result = await resend.emails.send({
       from: `SMS Messenger <${fromEmail}>`,
       to: [email],
       subject: 'Your SMS Messenger Verification Code',
       html: `<p>Your verification code is <strong>${otp}</strong>. It expires in 10 minutes.</p>`
     });
+    
+    console.log('Email send result:', result);
+    
+    // Check if Resend returned an error in the response
+    if (result && result.error) {
+      console.error('Resend API error response:', result.error);
+      throw new Error(`Resend API error: ${result.error.message || JSON.stringify(result.error)}`);
+    }
   } catch (emailErr) {
     console.error('Email sending failed:', emailErr);
-    const errorMessage = emailErr?.message || emailErr?.toString() || 'Unknown email error';
+    console.error('Error details:', {
+      message: emailErr?.message,
+      name: emailErr?.name,
+      code: emailErr?.code,
+      response: emailErr?.response
+    });
+    
+    // Extract more detailed error information
+    let errorMessage = 'Unknown email error';
+    if (emailErr?.message) {
+      errorMessage = emailErr.message;
+    } else if (emailErr?.response?.data) {
+      errorMessage = JSON.stringify(emailErr.response.data);
+    } else if (emailErr?.toString) {
+      errorMessage = emailErr.toString();
+    }
+    
     throw new Error(`Failed to send verification email: ${errorMessage}`);
   }
 

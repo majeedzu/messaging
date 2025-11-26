@@ -33,8 +33,12 @@ module.exports = async (req, res) => {
         return res.status(200).json({ success: true, message: 'OTP sent' });
       } catch (err) {
         console.error('Send OTP error:', err);
+        console.error('Error stack:', err.stack);
         const errorMessage = err.message || 'Server error';
-        return res.status(500).json({ error: errorMessage });
+        return res.status(500).json({ 
+          error: errorMessage,
+          details: process.env.NODE_ENV === 'development' ? err.stack : undefined
+        });
       }
     });
   } catch (err) {

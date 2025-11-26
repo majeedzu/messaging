@@ -96,11 +96,13 @@
           signupBtn.style.display = 'none';
           alert('Verification code sent to your email!');
         } else {
-          alert(data.error);
+          console.error('API Error:', data);
+          alert('Error: ' + (data.error || 'Failed to send verification email'));
         }
 
       } catch (err) {
-        alert('Failed to send verification email');
+        console.error('Network Error:', err);
+        alert('Network error: ' + err.message);
       }
     });
 
