@@ -32,8 +32,9 @@ module.exports = async (req, res) => {
 
         return res.status(200).json({ success: true, message: 'OTP sent' });
       } catch (err) {
-        console.error(err);
-        return res.status(500).json({ error: 'Server error' });
+        console.error('Send OTP error:', err);
+        const errorMessage = err.message || 'Server error';
+        return res.status(500).json({ error: errorMessage });
       }
     });
   } catch (err) {

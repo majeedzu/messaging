@@ -76,6 +76,11 @@ export function getPlanLimits(plan_tier) {
 
 // Helper: Generate and send OTP via EMAIL
 export async function sendOTP(email, phone = null) {
+  // Check if Resend API key is configured
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error('RESEND_API_KEY is not configured');
+  }
+
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
   const otpHash = await hashPassword(otp);
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
@@ -85,19 +90,24 @@ export async function sendOTP(email, phone = null) {
     .from('temp_otps')
     .upsert({ email, phone, otp_hash: otpHash, expires_at: expiresAt }, { onConflict: 'email' });
 
-  if (error) throw new Error('Failed to store OTP');
+  if (error) {
+    console.error('Failed to store OTP:', error);
+    throw new Error('Failed to store OTP');
+  }
 
   // Send via email
   try {
+    const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
     await resend.emails.send({
-      from: 'SMS Messenger <noreply@yourdomain.com>',
+      from: `SMS Messenger <${fromEmail}>`,
       to: [email],
       subject: 'Your SMS Messenger Verification Code',
       html: `<p>Your verification code is <strong>${otp}</strong>. It expires in 10 minutes.</p>`
     });
   } catch (emailErr) {
-    console.error('Email failed:', emailErr);
-    throw new Error('Failed to send verification email');
+    console.error('Email sending failed:', emailErr);
+    const errorMessage = emailErr?.message || emailErr?.toString() || 'Unknown email error';
+    throw new Error(`Failed to send verification email: ${errorMessage}`);
   }
 
   return true;

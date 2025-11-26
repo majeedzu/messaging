@@ -74,9 +74,10 @@ module.exports = async (req, res) => {
 
       // Send verification email
       const verifyUrl = `https://${req.headers.host}/verify?token=${verificationToken}&email=${encodeURIComponent(email)}`;
+      const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
 
       await resend.emails.send({
-        from: 'SMS Messenger <noreply@yourdomain.com>',
+        from: `SMS Messenger <${fromEmail}>`,
         to: [email],
         subject: 'Verify your SMS Messenger account',
         html: `
