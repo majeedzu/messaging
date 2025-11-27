@@ -82,7 +82,7 @@
       }
 
       try {
-        const res = await fetch('/api/signup/send-otp', {
+        const res = await fetch('/api/signup-send-otp', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({name, email, password})
@@ -131,7 +131,7 @@
       const otp = document.getElementById('otp').value;
 
       try {
-        const res = await fetch('/api/signup/verify-otp', {
+        const res = await fetch('/api/signup-verify-otp', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({...tempUserData, otp})
